@@ -73,7 +73,11 @@
   // clear pending interrupt
   TIFR1 |= (1 << OCF1B);
   // enable compare B interrupt
-  TIMSK1 = (1 << OCIE1B);
+  #ifdef __AVR_ATmega128__
+    TIMSK = (1 << OCIE1B);
+  #else
+    TIMSK1 = (1 << OCIE1B);
+  #endif
   chSysUnlock();
 
  }
@@ -81,7 +85,11 @@
  void chTimer1Stop() {
   TCCR1A = 0;
   TCCR1B = 0;
-  TIMSK1 = 0;
+  #ifdef __AVR_ATmega128__
+    TIMSK = 0;
+  #else
+    TIMSK1 = 0;
+  #endif
  }
 /** Sleep while waiting for timer1 signal.
  * @note This function should not be used in the idle thread.

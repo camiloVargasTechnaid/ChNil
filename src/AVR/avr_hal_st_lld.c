@@ -21,8 +21,8 @@
  * @addtogroup ST
  * @{
  */
- #include "../hal/hal.h"
- 
+#include "../hal/hal.h"
+
 /*===========================================================================*/
 /* Driver interrupt handlers.                                                */
 /*===========================================================================*/
@@ -32,6 +32,17 @@
 /**
  * @brief Timer handler for periodic mode.
  */
+#ifdef __AVR_ATmega128__
+CH_IRQ_HANDLER(TIMER0_COMP_vect) {
+  OSAL_IRQ_PROLOGUE();
+
+  osalSysLockFromISR();
+  osalOsTimerHandlerI();
+  osalSysUnlockFromISR();
+
+  OSAL_IRQ_EPILOGUE();
+}
+#else
 CH_IRQ_HANDLER(TIMER0_COMPA_vect) {
   OSAL_IRQ_PROLOGUE();
 
@@ -41,6 +52,7 @@ CH_IRQ_HANDLER(TIMER0_COMPA_vect) {
 
   OSAL_IRQ_EPILOGUE();
 }
+#endif
 
 #endif /* OSAL_ST_MODE == OSAL_ST_MODE_PERIODIC */
 
@@ -50,7 +62,6 @@ CH_IRQ_HANDLER(TIMER0_COMPA_vect) {
  * @brief Timer handler for free running mode.
  */
 OSAL_IRQ_HANDLER(TIMER1_COMPA_vect) {
-
   OSAL_IRQ_PROLOGUE();
 
   // TODO: reset status if required
@@ -72,13 +83,12 @@ OSAL_IRQ_HANDLER(TIMER1_COMPA_vect) {
  * @notapi
  */
 void st_lld_init(void) {
-
 #if (OSAL_ST_MODE == OSAL_ST_MODE_FREERUNNING) || defined(__DOXYGEN__)
 
 /* FIXME: Prescaler is now fixed in 1024.
  *        Should add support for calculating best value according to
  *        user requested configuration.
- */  
+ */
 #define PRESCALER (_BV(CS12) | _BV(CS10))
 
   /*
@@ -86,29 +96,33 @@ void st_lld_init(void) {
    */
 
   /* CTC mode, no clock source */
-  TCCR1A     = 0;
-  TCCR1B     = _BV(WGM12);
+  TCCR1A = 0;
+  TCCR1B = _BV(WGM12);
 
   /* start disabled */
-  TCCR1C     = 0;
-  OCR1A      = 0;
-  TCNT1      = 0;
-  TIFR_REG   = _BV(OCF1A);                                  /* Reset pending.   */
-  TIMSK_REG  = 0;
-  TCCR1B     = PRESCALER;
+  TCCR1C = 0;
+  OCR1A = 0;
+  TCNT1 = 0;
+  TIFR_REG = _BV(OCF1A); /* Reset pending.   */
+  TIMSK_REG = 0;
+  TCCR1B = PRESCALER;
 
-#endif /* OSAL_ST_MODE == OSAL_ST_MODE_FREERUNNING */ 
- 
+#endif /* OSAL_ST_MODE == OSAL_ST_MODE_FREERUNNING */
+
 #if (OSAL_ST_MODE == OSAL_ST_MODE_PERIODIC) || defined(__DOXYGEN__)
   /*
    * Timer 0 setup.
    */
-  OCR0A = 128;
-  TIMSK0  |= (1 << OCIE0A);    
-#endif /* OSAL_ST_MODE == OSAL_ST_MODE_PERIODIC */  
- 
+  #ifdef __AVR_ATmega128__
+    OCR0 = 128;
+    TIMSK |= (1 << OCIEA);
+  #else
+    OCR0A = 128;
+    TIMSK0 |= (1 << OCIE0A);
+  #endif
+#endif /* OSAL_ST_MODE == OSAL_ST_MODE_PERIODIC */
 }
-#if 0 // WHG
+#if 0  // WHG
 CH_IRQ_HANDLER(TIMER0_COMPA_vect) {
   OSAL_IRQ_PROLOGUE();
 
@@ -129,7 +143,6 @@ void st_lld_init(void) {
   OCR0A = 128;
   TIMSK0  |= (1 << OCIE0A);                               /* IRQ on compare.  */
 }
-
 
 #if (OSAL_ST_MODE != OSAL_ST_MODE_NONE) || defined(__DOXYGEN__)
 
@@ -158,58 +171,67 @@ void st_lld_init(void) {
 
 /* Work out what the timer interrupt is called on this MCU */
 #ifdef TIMER0_COMPA_vect
-  #define AVR_TIMER_VECT TIMER0_COMPA_vect
+#define AVR_TIMER_VECT TIMER0_COMPA_vect
 #elif defined(TIMER_COMPA_vect)
-  #define AVR_TIMER_VECT TIMER_COMPA_vect
+#define AVR_TIMER_VECT TIMER_COMPA_vect
 #elif defined(TIMER0_COMP_vect)
-  #define AVR_TIMER_VECT TIMER0_COMP_vect
+#define AVR_TIMER_VECT TIMER0_COMP_vect
 #else
-  #error "Cannot find interrupt vector name for timer"
+#error "Cannot find interrupt vector name for timer"
 #endif
 
 /* Find the most suitable prescaler setting for the desired OSAL_ST_FREQUENCY */
 #if ((F_CPU / OSAL_ST_FREQUENCY) <= AVR_TIMER_COUNTER_MAX)
 
-  #define AVR_TIMER_PRESCALER 1
-  #define AVR_TIMER_PRESCALER_BITS ((0<<CS02)|(0<<CS01)|(1<<CS00)) /* CLK      */
+#define AVR_TIMER_PRESCALER 1
+#define AVR_TIMER_PRESCALER_BITS \
+  ((0 << CS02) | (0 << CS01) | (1 << CS00)) /* CLK      */
 
 #elif ((F_CPU / OSAL_ST_FREQUENCY / 8) <= AVR_TIMER_COUNTER_MAX)
 
-  #define AVR_TIMER_PRESCALER 8
-  #define AVR_TIMER_PRESCALER_BITS ((0<<CS02)|(1<<CS01)|(0<<CS00)) /* CLK/8    */
+#define AVR_TIMER_PRESCALER 8
+#define AVR_TIMER_PRESCALER_BITS \
+  ((0 << CS02) | (1 << CS01) | (0 << CS00)) /* CLK/8    */
 
 #elif ((F_CPU / OSAL_ST_FREQUENCY / 64) <= AVR_TIMER_COUNTER_MAX)
 
-  #define AVR_TIMER_PRESCALER 64
+#define AVR_TIMER_PRESCALER 64
 
-  #ifdef __AVR_ATmega128__
-    #define AVR_TIMER_PRESCALER_BITS ((1<<CS02)|(0<<CS01)|(0<<CS00)) /* CLK/64   */
-  #else
-    #define AVR_TIMER_PRESCALER_BITS ((0<<CS02)|(1<<CS01)|(1<<CS00)) /* CLK/64   */
-  #endif
+#ifdef __AVR_ATmega128__
+#define AVR_TIMER_PRESCALER_BITS \
+  ((1 << CS02) | (0 << CS01) | (0 << CS00)) /* CLK/64   */
+#else
+#define AVR_TIMER_PRESCALER_BITS \
+  ((0 << CS02) | (1 << CS01) | (1 << CS00)) /* CLK/64   */
+#endif
 
 #elif ((F_CPU / OSAL_ST_FREQUENCY / 256) <= AVR_TIMER_COUNTER_MAX)
 
-  #define AVR_TIMER_PRESCALER 256
+#define AVR_TIMER_PRESCALER 256
 
-  #ifdef __AVR_ATmega128__
-    #define AVR_TIMER_PRESCALER_BITS ((1<<CS02)|(1<<CS01)|(0<<CS00)) /* CLK/256  */
-  #else
-    #define AVR_TIMER_PRESCALER_BITS ((1<<CS02)|(0<<CS01)|(0<<CS00)) /* CLK/256  */
-  #endif
+#ifdef __AVR_ATmega128__
+#define AVR_TIMER_PRESCALER_BITS \
+  ((1 << CS02) | (1 << CS01) | (0 << CS00)) /* CLK/256  */
+#else
+#define AVR_TIMER_PRESCALER_BITS \
+  ((1 << CS02) | (0 << CS01) | (0 << CS00)) /* CLK/256  */
+#endif
 
 #elif ((F_CPU / OSAL_ST_FREQUENCY / 1024) <= AVR_TIMER_COUNTER_MAX)
 
-  #define AVR_TIMER_PRESCALER 1024
+#define AVR_TIMER_PRESCALER 1024
 
-  #ifdef __AVR_ATmega128__
-    #define AVR_TIMER_PRESCALER_BITS (1<<CS02)|(1<<CS01)|(1<<CS00); /* CLK/1024 */
-  #else
-    #define AVR_TIMER_PRESCALER_BITS (1<<CS02)|(0<<CS01)|(1<<CS00); /* CLK/1024 */
-  #endif
+#ifdef __AVR_ATmega128__
+#define AVR_TIMER_PRESCALER_BITS \
+  (1 << CS02) | (1 << CS01) | (1 << CS00); /* CLK/1024 */
+#else
+#define AVR_TIMER_PRESCALER_BITS \
+  (1 << CS02) | (0 << CS01) | (1 << CS00); /* CLK/1024 */
+#endif
 
 #else
-  #error "Frequency too low for timer, please set OSAL_ST_FREQUENCY to a higher value"
+#error \
+    "Frequency too low for timer, please set OSAL_ST_FREQUENCY to a higher value"
 #endif
 
 #define AVR_TIMER_COUNTER (F_CPU / OSAL_ST_FREQUENCY / AVR_TIMER_PRESCALER)
@@ -217,7 +239,7 @@ void st_lld_init(void) {
 /* Test if OSAL_ST_FREQUENCY can be matched exactly using this timer */
 #define F_CPU_ (AVR_TIMER_COUNTER * AVR_TIMER_PRESCALER * OSAL_ST_FREQUENCY)
 #if (F_CPU_ != F_CPU)
-  #warning "OSAL_ST_FREQUENCY cannot be generated exactly using timer"
+#warning "OSAL_ST_FREQUENCY cannot be generated exactly using timer"
 #endif
 #undef F_CPU_
 
@@ -315,7 +337,7 @@ void st_lld_init(void) {
   /*
    * Periodic mode uses Timer 0 (8 bit).
    */
-#if defined(TCCR0B) /* Timer has multiple output comparators                       */
+#if defined(TCCR0B) /* Timer has multiple output comparators */
   TCCR0A  = (1 << WGM01) | (0 << WGM00) |                /* CTC mode.        */
             (0 << COM0A1) | (0 << COM0A0) |              /* OC0A disabled.   */
             (0 << COM0B1) | (0 << COM0B0);               /* OC0B disabled.   */
@@ -325,7 +347,8 @@ void st_lld_init(void) {
   TIFR0   = (1 << OCF0A);                                /* Reset pending.   */
   TIMSK0  = (1 << OCIE0A);                               /* IRQ on compare.  */
 
-#elif defined(TCCR0A) /* AT90CAN doesn't have TCCR0B and slightly different TCCR0A */
+#elif defined( \
+    TCCR0A) /* AT90CAN doesn't have TCCR0B and slightly different TCCR0A */
   TCCR0A  = (1 << WGM01) | (0 << WGM00) |                /* CTC mode.        */
             (0 << COM0A1) | (0 << COM0A0);               /* OC0A disabled.   */
   OCR0A   = AVR_TIMER_COUNTER - 1;
@@ -333,7 +356,7 @@ void st_lld_init(void) {
   TIFR0   = (1 << OCF0A);                                /* Reset pending.   */
   TIMSK0  = (1 << OCIE0A);                               /* IRQ on compare.  */
 
-#elif defined(TCCR0) /* Timer has single output comparator                   */
+#elif defined(TCCR0) /* Timer has single output comparator */
   TCCR0   = (1 << WGM01) | (0 << WGM00) |                /* CTC mode.        */
             (0 << COM01) | (0 << COM00) |                /* OC0A disabled.   */
             AVR_TIMER_PRESCALER_BITS;
@@ -342,13 +365,13 @@ void st_lld_init(void) {
   TIFR    = (1 << OCF0);                                 /* Reset pending.   */
   TIMSK   = (1 << OCIE0);                                /* IRQ on compare.  */
 #else
-  #error "Neither TCCR0A nor TCCR0 registers are defined"
+#error "Neither TCCR0A nor TCCR0 registers are defined"
 #endif
 
 #endif /* OSAL_ST_MODE == OSAL_ST_MODE_PERIODIC */
 
 }
 
-#endif /* OSAL_ST_MODE != OSAL_ST_MODE_NONE */
-#endif // WHG
+#endif  /* OSAL_ST_MODE != OSAL_ST_MODE_NONE */
+#endif  // WHG
 /** @} */
